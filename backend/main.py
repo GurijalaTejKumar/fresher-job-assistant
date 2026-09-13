@@ -1,10 +1,39 @@
 from difflib import SequenceMatcher
+from io import BytesIO
+from pathlib import Path
 import sqlite3
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from pypdf import PdfReader
 
-app = FastAPI()
+
+# =========================================================
+# APPLICATION
+# =========================================================
+
+app = FastAPI(
+    title="Fresher Job Assistant API",
+    description="Backend for the Fresher Job Assistant MVP",
+    version="1.0.0"
+)
+
+
+# =========================================================
+# CORS
+# =========================================================
+#
+# Our frontend is currently running through Live Server:
+#
+# http://127.0.0.1:5500
+#
+# Our FastAPI backend:
+#
+# http://127.0.0.1:8000
+#
+# CORS allows the frontend to communicate with the backend.
+# =========================================================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -16,22 +45,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DATABASE = "database/jobs.db"
-
 
 # =========================================================
 # DATABASE
 # =========================================================
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+DATABASE = BASE_DIR / "database" / "jobs.db"
+
+
 def get_connection():
     """
-    Open the SQLite database.
+    Open a connection to the SQLite database.
 
-    Row factory allows us to access columns using names
-    instead of numeric positions.
+    sqlite3.Row lets us access database columns by name.
     """
-    connection = sqlite3.connect(DATABASE)
+
+    connection = sqlite3.connect(
+        DATABASE
+    )
+
     connection.row_factory = sqlite3.Row
+
     return connection
 
 
@@ -84,17 +120,33 @@ SKILL_ALIASES = {
 
 
 def normalize_skill(skill: str) -> str:
-    """Normalize one skill."""
+    """
+    Normalize one skill.
+    """
 
     skill = skill.strip().lower()
-    skill = " ".join(skill.split())
-    skill = skill.strip(".,;:()[]{}")
 
-    return SKILL_ALIASES.get(skill, skill)
+    skill = " ".join(
+        skill.split()
+    )
+
+    skill = skill.strip(
+        ".,;:()[]{}"
+    )
+
+    return SKILL_ALIASES.get(
+        skill,
+        skill
+    )
 
 
-def split_skills(skills: str | None) -> list[str]:
-    """Convert comma-separated skills into normalized unique skills."""
+def split_skills(
+    skills: str | None
+) -> list[str]:
+    """
+    Convert comma-separated skills into
+    normalized unique skills.
+    """
 
     if not skills:
         return []
@@ -102,12 +154,16 @@ def split_skills(skills: str | None) -> list[str]:
     result = []
 
     for skill in skills.split(","):
+
         if skill.strip():
+
             result.append(
                 normalize_skill(skill)
             )
 
-    return list(dict.fromkeys(result))
+    return list(
+        dict.fromkeys(result)
+    )
 
 
 # =========================================================
@@ -119,16 +175,32 @@ def calculate_skill_match(
     job_skills: str | None
 ):
     """
-    Compare candidate skills against job skills.
+    Compare candidate skills with job skills.
 
-    The percentage represents the proportion of the
-    job's listed skills that the candidate appears to have.
+    Example:
+
+    Candidate:
+        Python, SQL
+
+    Job:
+        Python, SQL, Docker
+
+    Result:
+        Match = 67%
+        Matched = Python, SQL
+        Missing = Docker
     """
 
-    candidate_list = split_skills(candidate_skills)
-    job_list = split_skills(job_skills)
+    candidate_list = split_skills(
+        candidate_skills
+    )
+
+    job_list = split_skills(
+        job_skills
+    )
 
     if not job_list:
+
         return {
             "match_percentage": 0,
             "matched_skills": [],
@@ -146,6 +218,7 @@ def calculate_skill_match(
 
             # Exact match
             if candidate_skill == job_skill:
+
                 best_ratio = 1.0
                 break
 
@@ -154,8 +227,11 @@ def calculate_skill_match(
                 candidate_skill in job_skill
                 or job_skill in candidate_skill
             ):
+
                 ratio = 0.90
+
             else:
+
                 ratio = SequenceMatcher(
                     None,
                     candidate_skill,
@@ -168,9 +244,16 @@ def calculate_skill_match(
             )
 
         if best_ratio >= 0.80:
-            matched_skills.append(job_skill)
+
+            matched_skills.append(
+                job_skill
+            )
+
         else:
-            missing_skills.append(job_skill)
+
+            missing_skills.append(
+                job_skill
+            )
 
     match_percentage = round(
         len(matched_skills)
@@ -331,6 +414,7 @@ ROLE_FAMILIES = {
 # =========================================================
 
 RELATED_ROLES = {
+
     "software engineer": [
         "Backend Developer",
         "Frontend Developer",
@@ -390,50 +474,66 @@ RELATED_ROLES = {
     "database administrator": [
         "Database Engineer",
         "Database Administrator",
-        "Data Engineer",
     ],
 }
 
 
 def normalize_role(role: str) -> str:
-    """Normalize a role string."""
+    """
+    Normalize a role string.
+    """
 
     role = role.strip().lower()
-    role = " ".join(role.split())
+
+    role = " ".join(
+        role.split()
+    )
 
     return role
 
 
-def correct_role_spelling(role: str) -> str:
+def correct_role_spelling(
+    role: str
+) -> str:
     """
-    Correct obvious spelling mistakes in a user's
-    requested role.
+    Correct obvious spelling mistakes by comparing
+    the user's role only against known career vocabulary.
 
-    We compare the user's role only against our known
-    career vocabulary. This prevents unrelated careers
-    from being matched just because they look similar.
+    Example:
+
+        qa enginner
+        ↓
+        qa engineer
     """
 
-    normalized_role = normalize_role(role)
+    normalized_role = normalize_role(
+        role
+    )
 
-    # Already a known family or alias
+    # Already a known family
     if normalized_role in ROLE_FAMILIES:
         return normalized_role
 
+    # Already a known alias
     for family_terms in ROLE_FAMILIES.values():
+
         if normalized_role in family_terms:
             return normalized_role
 
-    # Find the closest known role term
-    best_match = normalized_role
-    best_ratio = 0.0
-
+    # Build known role vocabulary
     all_known_roles = []
 
     for family_terms in ROLE_FAMILIES.values():
-        all_known_roles.extend(family_terms)
+        all_known_roles.extend(
+            family_terms
+        )
 
+    best_match = normalized_role
+    best_ratio = 0.0
+
+    # Compare with known roles
     for known_role in all_known_roles:
+
         ratio = SequenceMatcher(
             None,
             normalized_role,
@@ -441,59 +541,47 @@ def correct_role_spelling(role: str) -> str:
         ).ratio()
 
         if ratio > best_ratio:
+
             best_ratio = ratio
             best_match = known_role
 
-    # Only correct high-confidence spelling mistakes.
+    # Only accept high-confidence corrections
     if best_ratio >= 0.85:
         return best_match
 
     return normalized_role
 
 
-def get_role_family(candidate_role: str) -> set[str]:
+def get_role_family(
+    candidate_role: str
+) -> set[str]:
     """
-    Find the career family after correcting obvious
-    spelling mistakes.
+    Return the career family belonging to the
+    corrected candidate role.
     """
 
     corrected_role = correct_role_spelling(
         candidate_role
     )
 
-    # Exact family name
+    # Direct family name
     if corrected_role in ROLE_FAMILIES:
-        return ROLE_FAMILIES[corrected_role]
+        return ROLE_FAMILIES[
+            corrected_role
+        ]
 
-    # Find the family containing this alias
-    for family_terms in ROLE_FAMILIES.values():
-
-        if corrected_role in family_terms:
-            return family_terms
-
-    # Unknown role
-    return {corrected_role}
-
-
-def get_related_roles(candidate_role: str) -> list[str]:
-    """Return suggested related careers."""
-
-    normalized_role = normalize_role(
-        candidate_role
-    )
-
-    if normalized_role in RELATED_ROLES:
-        return RELATED_ROLES[normalized_role]
-
+    # Alias inside a family
     for family_name, family_terms in ROLE_FAMILIES.items():
 
-        if normalized_role in family_terms:
-            return RELATED_ROLES.get(
-                family_name,
-                []
-            )
+        if corrected_role in family_terms:
+            return ROLE_FAMILIES[
+                family_name
+            ]
 
-    return []
+    # Unknown role
+    return {
+        corrected_role
+    }
 
 
 def calculate_role_match(
@@ -504,19 +592,16 @@ def calculate_role_match(
     """
     Calculate career relevance.
 
-    Scores:
+    100 = matching career title
+     60 = role appears meaningfully in description
+      0 = no meaningful career relationship
 
-    100 = strong/related job-title match
-     60 = meaningful description match
-      0 = no meaningful career match
-
-    We deliberately do NOT use generic fuzzy comparison
-    between complete job titles because titles such as:
+    We do NOT use generic fuzzy title matching because:
 
         Software Engineer
         QA Engineer
 
-    share "Engineer" but represent different careers.
+    share the word "Engineer" but are different careers.
     """
 
     if not candidate_role:
@@ -527,20 +612,20 @@ def calculate_role_match(
             "matched_terms": []
         }
 
-    candidate_role = correct_role_spelling(
+    corrected_role = correct_role_spelling(
         candidate_role
     )
 
-    job_title = normalize_role(
+    job_title_normalized = normalize_role(
         job_title or ""
     )
 
-    job_description = normalize_role(
+    job_description_normalized = normalize_role(
         job_description or ""
     )
 
     role_terms = get_role_family(
-        candidate_role
+        corrected_role
     )
 
     # -----------------------------------------------------
@@ -549,7 +634,7 @@ def calculate_role_match(
 
     for term in role_terms:
 
-        if job_title == term:
+        if job_title_normalized == term:
 
             return {
                 "match_percentage": 100,
@@ -563,7 +648,7 @@ def calculate_role_match(
 
     for term in role_terms:
 
-        if term in job_title:
+        if term in job_title_normalized:
 
             return {
                 "match_percentage": 100,
@@ -579,8 +664,11 @@ def calculate_role_match(
 
     for term in role_terms:
 
-        if term in job_description:
-            description_matches.append(term)
+        if term in job_description_normalized:
+
+            description_matches.append(
+                term
+            )
 
     if description_matches:
 
@@ -595,7 +683,7 @@ def calculate_role_match(
         }
 
     # -----------------------------------------------------
-    # No meaningful career match
+    # No meaningful match
     # -----------------------------------------------------
 
     return {
@@ -612,7 +700,9 @@ def calculate_role_match(
 def is_fresher_job(
     experience_requirement: str | None
 ) -> bool:
-    """Check whether a job accepts a fresher."""
+    """
+    Determine whether the job accepts a fresher.
+    """
 
     if not experience_requirement:
         return False
@@ -642,7 +732,8 @@ def check_eligibility(
     job: dict
 ):
     """
-    Check the candidate against basic job eligibility.
+    Check whether the candidate meets the
+    basic job requirements.
     """
 
     eligible = True
@@ -657,7 +748,9 @@ def check_eligibility(
     if degree:
 
         candidate_degree = (
-            degree.strip().lower()
+            degree
+            .strip()
+            .lower()
         )
 
         job_degree = (
@@ -692,7 +785,9 @@ def check_eligibility(
     if branch:
 
         candidate_branch = (
-            branch.strip().lower()
+            branch
+            .strip()
+            .lower()
         )
 
         job_branch = (
@@ -726,7 +821,10 @@ def check_eligibility(
 
     if graduation_year:
 
-        if graduation_year == job["graduation_year"]:
+        if (
+            graduation_year
+            == job["graduation_year"]
+        ):
 
             reasons.append(
                 "Graduation year matches"
@@ -748,7 +846,9 @@ def check_eligibility(
     if experience:
 
         candidate_experience = (
-            experience.strip().lower()
+            experience
+            .strip()
+            .lower()
         )
 
         if candidate_experience == "fresher":
@@ -766,7 +866,8 @@ def check_eligibility(
                 eligible = False
 
                 problems.append(
-                    "Job requires prior experience: "
+                    "Job requires prior "
+                    "experience: "
                     f"{job['experience_requirement']}"
                 )
 
@@ -778,7 +879,7 @@ def check_eligibility(
 
 
 # =========================================================
-# OVERALL MATCH
+# OVERALL MATCH SCORE
 # =========================================================
 
 def calculate_overall_match(
@@ -792,7 +893,7 @@ def calculate_overall_match(
     job: dict
 ):
     """
-    Overall score:
+    Overall weighting:
 
         Career role       30%
         Skills            30%
@@ -802,7 +903,7 @@ def calculate_overall_match(
         Experience         5%
         Location           5%
 
-        Total = 100%
+    Total = 100%
     """
 
     score = 0.0
@@ -829,11 +930,15 @@ def calculate_overall_match(
     if candidate_degree:
 
         candidate_degree_normalized = (
-            candidate_degree.strip().lower()
+            candidate_degree
+            .strip()
+            .lower()
         )
 
         job_degree_normalized = (
-            job["degree"].strip().lower()
+            job["degree"]
+            .strip()
+            .lower()
         )
 
         if (
@@ -852,11 +957,15 @@ def calculate_overall_match(
     if candidate_branch:
 
         candidate_branch_normalized = (
-            candidate_branch.strip().lower()
+            candidate_branch
+            .strip()
+            .lower()
         )
 
         job_branch_normalized = (
-            job["branch"].strip().lower()
+            job["branch"]
+            .strip()
+            .lower()
         )
 
         if (
@@ -888,7 +997,9 @@ def calculate_overall_match(
     if candidate_experience:
 
         if (
-            candidate_experience.strip().lower()
+            candidate_experience
+            .strip()
+            .lower()
             == "fresher"
             and is_fresher_job(
                 job["experience_requirement"]
@@ -918,11 +1029,15 @@ def calculate_overall_match(
     if candidate_location:
 
         candidate_location_normalized = (
-            candidate_location.strip().lower()
+            candidate_location
+            .strip()
+            .lower()
         )
 
         job_location_normalized = (
-            job["location"].strip().lower()
+            job["location"]
+            .strip()
+            .lower()
         )
 
         if (
@@ -934,7 +1049,9 @@ def calculate_overall_match(
 
             score += 5
 
-    overall_percentage = round(score)
+    overall_percentage = round(
+        score
+    )
 
     # -----------------------------------------------------
     # Match level
@@ -957,8 +1074,11 @@ def calculate_overall_match(
         match_level = "Low"
 
     return {
-        "overall_match_percentage": overall_percentage,
-        "match_level": match_level
+        "overall_match_percentage":
+            overall_percentage,
+
+        "match_level":
+            match_level
     }
 
 
@@ -970,9 +1090,8 @@ def calculate_overall_match(
 def home():
 
     return {
-        "message": (
+        "message":
             "B.Tech Fresher Job Assistant is running!"
-        )
     }
 
 
@@ -984,9 +1103,10 @@ def home():
 def get_jobs():
 
     connection = get_connection()
-    cursor = connection.cursor()
 
     try:
+
+        cursor = connection.cursor()
 
         cursor.execute("""
             SELECT *
@@ -1022,12 +1142,13 @@ def search_jobs(
 ):
 
     connection = get_connection()
-    cursor = connection.cursor()
 
     try:
 
+        cursor = connection.cursor()
+
         # -------------------------------------------------
-        # Build database query
+        # Base query
         # -------------------------------------------------
 
         query = """
@@ -1051,7 +1172,9 @@ def search_jobs(
                 )
             """
 
-            parameters.append(degree)
+            parameters.append(
+                degree
+            )
 
         # -------------------------------------------------
         # Branch
@@ -1066,7 +1189,9 @@ def search_jobs(
                 )
             """
 
-            parameters.append(branch)
+            parameters.append(
+                branch
+            )
 
         # -------------------------------------------------
         # Graduation year
@@ -1097,13 +1222,15 @@ def search_jobs(
             )
 
         # -------------------------------------------------
-        # Fresher
+        # Experience
         # -------------------------------------------------
 
         if experience:
 
             if (
-                experience.strip().lower()
+                experience
+                .strip()
+                .lower()
                 == "fresher"
             ):
 
@@ -1119,10 +1246,11 @@ def search_jobs(
                 ])
 
         # -------------------------------------------------
-        # Get all eligible candidates from database
+        # Get all matching database rows
         #
-        # We deliberately avoid LIMIT here.
-        # Role matching needs to see the whole eligible set.
+        # We intentionally do NOT use LIMIT here.
+        # Otherwise relevant jobs could be hidden before
+        # role matching and ranking happens.
         # -------------------------------------------------
 
         cursor.execute(
@@ -1140,12 +1268,16 @@ def search_jobs(
         connection.close()
 
     # =====================================================
-    # MATCH EACH JOB
+    # MATCH JOBS
     # =====================================================
 
     final_jobs = []
 
     for job in jobs:
+
+        # -------------------------------------------------
+        # Eligibility
+        # -------------------------------------------------
 
         eligibility = check_eligibility(
             degree=degree,
@@ -1155,16 +1287,28 @@ def search_jobs(
             job=job
         )
 
+        # -------------------------------------------------
+        # Skill matching
+        # -------------------------------------------------
+
         skill_match = calculate_skill_match(
             candidate_skills=skills,
             job_skills=job["skills"]
         )
+
+        # -------------------------------------------------
+        # Career matching
+        # -------------------------------------------------
 
         role_match = calculate_role_match(
             candidate_role=target_role,
             job_title=job["job_title"],
             job_description=job["job_description"]
         )
+
+        # -------------------------------------------------
+        # Overall matching
+        # -------------------------------------------------
 
         overall_match = calculate_overall_match(
             candidate_role=target_role,
@@ -1177,15 +1321,24 @@ def search_jobs(
             job=job
         )
 
+        # -------------------------------------------------
+        # Add calculated information to job
+        # -------------------------------------------------
+
         job["eligibility"] = eligibility
+
         job["skill_match"] = skill_match
+
         job["role_match"] = role_match
+
         job["overall_match"] = overall_match
 
-        final_jobs.append(job)
+        final_jobs.append(
+            job
+        )
 
     # =====================================================
-    # ONLY BASICALLY ELIGIBLE JOBS
+    # REMOVE BASICALLY INELIGIBLE JOBS
     # =====================================================
 
     final_jobs = [
@@ -1197,8 +1350,8 @@ def search_jobs(
     # =====================================================
     # TARGET ROLE FILTER
     #
-    # If the user explicitly selected a career,
-    # don't recommend completely unrelated careers.
+    # When the user has explicitly requested a career,
+    # remove jobs that have no meaningful career match.
     # =====================================================
 
     if target_role:
@@ -1206,8 +1359,11 @@ def search_jobs(
         final_jobs = [
             job
             for job in final_jobs
-            if job["role_match"]["match_percentage"]
-            >= 60
+            if (
+                job["role_match"]
+                ["match_percentage"]
+                >= 60
+            )
         ]
 
     # =====================================================
@@ -1216,21 +1372,20 @@ def search_jobs(
 
     final_jobs.sort(
         key=lambda job: (
-            job["role_match"][
-                "match_percentage"
-            ],
-            job["overall_match"][
-                "overall_match_percentage"
-            ],
-            job["skill_match"][
-                "match_percentage"
-            ]
+            job["role_match"]
+            ["match_percentage"],
+
+            job["overall_match"]
+            ["overall_match_percentage"],
+
+            job["skill_match"]
+            ["match_percentage"]
         ),
         reverse=True
     )
 
     # =====================================================
-    # NO RESULTS RESPONSE
+    # RESPONSE
     # =====================================================
 
     response = {
@@ -1238,15 +1393,154 @@ def search_jobs(
         "jobs": final_jobs
     }
 
-    if not final_jobs and target_role:
+    # -----------------------------------------------------
+    # Helpful response when nothing matches
+    # -----------------------------------------------------
+
+    if (
+        not final_jobs
+        and target_role
+    ):
+
+        corrected_role = correct_role_spelling(
+            target_role
+        )
 
         response["message"] = (
-            f"No suitable {target_role} jobs were "
-            "found for the current profile."
+            f"No suitable {corrected_role} jobs "
+            "were found for the current profile."
         )
 
         response["suggested_roles"] = (
-            get_related_roles(target_role)
+            get_related_roles(
+                corrected_role
+            )
         )
 
     return response
+
+
+# =========================================================
+# RESUME UPLOAD
+# =========================================================
+
+@app.post("/resume/upload")
+async def upload_resume(
+    resume: UploadFile = File(...)
+):
+    """
+    Upload a PDF resume and extract readable text.
+
+    This endpoint currently performs:
+
+        PDF upload
+            ↓
+        PDF text extraction
+
+    Resume field extraction and job matching will be
+    connected after this step is verified.
+    """
+
+    # -----------------------------------------------------
+    # Validate file
+    # -----------------------------------------------------
+
+    if not resume.filename:
+
+        return {
+            "success": False,
+            "message": "No file was selected."
+        }
+
+    # -----------------------------------------------------
+    # Validate PDF
+    # -----------------------------------------------------
+
+    filename = resume.filename.lower()
+
+    if not filename.endswith(".pdf"):
+
+        return {
+            "success": False,
+            "message": (
+                "Please upload a PDF resume."
+            )
+        }
+
+    # -----------------------------------------------------
+    # Read uploaded file
+    # -----------------------------------------------------
+
+    file_bytes = await resume.read()
+
+    if not file_bytes:
+
+        return {
+            "success": False,
+            "message": "The uploaded file is empty."
+        }
+
+    # -----------------------------------------------------
+    # Extract PDF text
+    # -----------------------------------------------------
+
+    try:
+
+        pdf = PdfReader(
+            BytesIO(file_bytes)
+        )
+
+        pages_text = []
+
+        for page in pdf.pages:
+
+            text = page.extract_text()
+
+            if text:
+
+                pages_text.append(
+                    text
+                )
+
+        resume_text = "\n".join(
+            pages_text
+        ).strip()
+
+    except Exception:
+
+        return {
+            "success": False,
+            "message": (
+                "Unable to read this PDF resume."
+            )
+        }
+
+    # -----------------------------------------------------
+    # Check extracted text
+    # -----------------------------------------------------
+
+    if not resume_text:
+
+        return {
+            "success": False,
+            "message": (
+                "The PDF was uploaded, but no readable "
+                "text was found."
+            ),
+            "possible_reason": (
+                "The PDF may be image/scanned based."
+            )
+        }
+
+    # -----------------------------------------------------
+    # Return extracted text
+    # -----------------------------------------------------
+
+    return {
+        "success": True,
+        "filename": resume.filename,
+        "message": (
+            "Resume uploaded and text extracted successfully."
+        ),
+        "text": resume_text
+    }
