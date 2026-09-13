@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Fresher Job Assistant</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+
+<body>
+
+    <main class="container">
+
+        <!-- =================================================
+             HERO
+        ================================================== -->
+
+        <section class="hero">
+
+            <h1>Fresher Job Assistant</h1>
+
+            <p>
+                Find jobs that match your education,
+                career goal, experience and skills.
+            </p>
+
+        </section>
+
+
+        <!-- =================================================
+             MAIN SEARCH CARD
+        ================================================== -->
+
+        <section class="search-card">
+
+            <h2>Find Suitable Jobs</h2>
+
+            <p class="section-description">
+                Choose how you want to provide your details.
+            </p>
+
+
+            <!-- =================================================
+                 INPUT METHOD BUTTONS
+            ================================================== -->
+
+            <div class="input-method">
+
+                <button
+                    type="button"
+                    class="method-button active"
+                    id="manual-method"
+                >
+
+                    <span class="method-title">
+                        Enter Manually
+                    </span>
+
+                    <span class="method-description">
+                        Enter your education and skills yourself
+                    </span>
+
+                </button>
+
+
+                <button
+                    type="button"
+                    class="method-button"
+                    id="resume-method"
+                >
+
+                    <span class="method-title">
+                        Upload Resume
+                    </span>
+
+                    <span class="method-description">
+                        Upload your resume from your computer
+                    </span>
+
+                </button>
+
+            </div>
+
+
+            <!-- =================================================
+                 RESUME UPLOAD SECTION
+            ================================================== -->
+
+            <div
+                id="resume-section"
+                class="resume-section hidden"
+            >
+
+                <label
+                    for="resume"
+                    class="upload-box"
+                >
+
+                    <div class="upload-icon">
+                        📄
+                    </div>
+
+                    <h3>
+                        Upload your resume
+                    </h3>
+
+                    <p>
+                        PDF, DOC or DOCX
+                    </p>
+
+                    <span class="upload-button">
+                        Choose Resume
+                    </span>
+
+                    <input
+                        type="file"
+                        id="resume"
+                        accept=".pdf,.doc,.docx"
+                        hidden
+                    >
+
+                </label>
+
+
+                <p
+                    id="selected-file"
+                    class="selected-file"
+                ></p>
+
+
+                <p class="resume-note">
+                    Resume analysis will be connected to the
+                    job matching system in the next step.
+                </p>
+
+            </div>
+
+
+            <!-- =================================================
+                 MANUAL ENTRY SECTION
+            ================================================== -->
+
+            <div id="manual-section">
+
+                <form id="job-search-form">
+
+                    <!-- Desired Role -->
+
+                    <label for="target-role">
+                        Desired Role
+                    </label>
+
+                    <input
+                        type="text"
+                        id="target-role"
+                        placeholder="Example: Software Engineer"
+                    >
+
+
+                    <!-- Degree -->
+
+                    <label for="degree">
+                        Degree
+                    </label>
+
+                    <select id="degree">
+
+                        <option
+                            value=""
+                            selected
+                        >
+                            Select your degree
+                        </option>
+
+                        <option value="B.Tech">
+                            B.Tech
+                        </option>
+
+                        <option value="B.E.">
+                            B.E.
+                        </option>
+
+                        <option value="BCA">
+                            BCA
+                        </option>
+
+                        <option value="B.Sc">
+                            B.Sc
+                        </option>
+
+                        <option value="M.Tech">
+                            M.Tech
+                        </option>
+
+                        <option value="MCA">
+                            MCA
+                        </option>
+
+                    </select>
+
+
+                    <!-- Branch -->
+
+                    <label for="branch">
+                        Branch
+                    </label>
+
+                    <select id="branch">
+
+                        <option
+                            value=""
+                            selected
+                        >
+                            Select your branch
+                        </option>
+
+                        <option value="Computer Science">
+                            Computer Science
+                        </option>
+
+                        <option value="Information Technology">
+                            Information Technology
+                        </option>
+
+                        <option value="Electronics and Communication">
+                            Electronics and Communication
+                        </option>
+
+                        <option value="Electrical Engineering">
+                            Electrical Engineering
+                        </option>
+
+                        <option value="Mechanical Engineering">
+                            Mechanical Engineering
+                        </option>
+
+                        <option value="Civil Engineering">
+                            Civil Engineering
+                        </option>
+
+                    </select>
+
+
+                    <!-- Graduation Year -->
+
+                    <label for="graduation-year">
+                        Graduation Year
+                    </label>
+
+                    <input
+                        type="number"
+                        id="graduation-year"
+                        placeholder="Example: 2026"
+                        min="2000"
+                        max="2100"
+                    >
+
+
+                    <!-- Experience -->
+
+                    <label for="experience">
+                        Experience
+                    </label>
+
+                    <select id="experience">
+
+                        <option
+                            value=""
+                            selected
+                        >
+                            Select experience
+                        </option>
+
+                        <option value="fresher">
+                            Fresher
+                        </option>
+
+                        <option value="1-2">
+                            1-2 Years
+                        </option>
+
+                        <option value="2-4">
+                            2-4 Years
+                        </option>
+
+                    </select>
+
+
+                    <!-- Skills -->
+
+                    <label for="skills">
+                        Skills
+                    </label>
+
+                    <input
+                        type="text"
+                        id="skills"
+                        placeholder="Example: Python, SQL, JavaScript"
+                    >
+
+
+                    <!-- Location -->
+
+                    <label for="location">
+                        Preferred Location
+                    </label>
+
+                    <input
+                        type="text"
+                        id="location"
+                        placeholder="Example: Bengaluru"
+                    >
+
+
+                    <!-- Search -->
+
+                    <button
+                        type="submit"
+                        class="search-button"
+                    >
+                        Find My Jobs
+                    </button>
+
+                </form>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             RESULTS
+        ================================================== -->
+
+        <section
+            id="results-section"
+            class="results-section"
+        >
+
+            <div id="results"></div>
+
+        </section>
+
+    </main>
+
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>

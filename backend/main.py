@@ -2,8 +2,19 @@ from difflib import SequenceMatcher
 import sqlite3
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://127.0.0.1:5500",
+        "http://localhost:5500",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 DATABASE = "database/jobs.db"
 
@@ -393,26 +404,75 @@ def normalize_role(role: str) -> str:
     return role
 
 
+def correct_role_spelling(role: str) -> str:
+    """
+    Correct obvious spelling mistakes in a user's
+    requested role.
+
+    We compare the user's role only against our known
+    career vocabulary. This prevents unrelated careers
+    from being matched just because they look similar.
+    """
+
+    normalized_role = normalize_role(role)
+
+    # Already a known family or alias
+    if normalized_role in ROLE_FAMILIES:
+        return normalized_role
+
+    for family_terms in ROLE_FAMILIES.values():
+        if normalized_role in family_terms:
+            return normalized_role
+
+    # Find the closest known role term
+    best_match = normalized_role
+    best_ratio = 0.0
+
+    all_known_roles = []
+
+    for family_terms in ROLE_FAMILIES.values():
+        all_known_roles.extend(family_terms)
+
+    for known_role in all_known_roles:
+        ratio = SequenceMatcher(
+            None,
+            normalized_role,
+            known_role
+        ).ratio()
+
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_match = known_role
+
+    # Only correct high-confidence spelling mistakes.
+    if best_ratio >= 0.85:
+        return best_match
+
+    return normalized_role
+
+
 def get_role_family(candidate_role: str) -> set[str]:
     """
-    Return the role family for the requested career.
-
-    Unknown roles are treated as their own exact role.
+    Find the career family after correcting obvious
+    spelling mistakes.
     """
 
-    normalized_role = normalize_role(
+    corrected_role = correct_role_spelling(
         candidate_role
     )
 
-    if normalized_role in ROLE_FAMILIES:
-        return ROLE_FAMILIES[normalized_role]
+    # Exact family name
+    if corrected_role in ROLE_FAMILIES:
+        return ROLE_FAMILIES[corrected_role]
 
+    # Find the family containing this alias
     for family_terms in ROLE_FAMILIES.values():
 
-        if normalized_role in family_terms:
+        if corrected_role in family_terms:
             return family_terms
 
-    return {normalized_role}
+    # Unknown role
+    return {corrected_role}
 
 
 def get_related_roles(candidate_role: str) -> list[str]:
@@ -467,7 +527,7 @@ def calculate_role_match(
             "matched_terms": []
         }
 
-    candidate_role = normalize_role(
+    candidate_role = correct_role_spelling(
         candidate_role
     )
 
